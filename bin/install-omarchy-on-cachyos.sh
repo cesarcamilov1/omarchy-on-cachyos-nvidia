@@ -90,7 +90,7 @@ sed -i '/linux-cachyos/ ! s/pacman -Q linux/pacman -Q linux-cachyos/' bin/omarch
 # Remove pacman.sh from preflight/all.sh to prevent conflict with cachyos packages
 sed -i '/run_logged \$OMARCHY_INSTALL\/preflight\/pacman\.sh/d' install/preflight/all.sh
 
-# Replace nvidia.sh with custom CachyOS 580xx Driver Logic
+# Replace nvidia.sh with CachyOS Nvidia configuration logic that detects and uses the existing driver instead of forcing installation.
 cp ../bin/nvidia.sh install/config/hardware/nvidia.sh
 chmod +x install/config/hardware/nvidia.sh
 
@@ -154,7 +154,7 @@ echo "The following adjustments have been completed."
 echo " 1. Added Omarchy repo to pacman.conf"
 echo " 2. Removed tldr from packages.sh to avoid conflict with tealdeer on CachyOS."
 echo " 3. Disabled further Omarchy changes to pacman.conf, preserving CachyOS settings."
-echo " 4. Replaced nvidia.sh with custom CachyOS 580xx Driver Logic."
+echo " 4. Replaced nvidia.sh with custom CachyOS Nvidia configuration logic."
 echo " 5. Removed plymouth.sh from install.sh to avoid conflict with CachyOS login display manager installation."
 echo " 6. Removed limine-snapper.sh from install.sh to avoid conflict with CachyOS boot loader installation."
 echo " 7. Removed alt-bootloaders.sh from install.sh to avoid conflict with CachyOS boot loader installation."
