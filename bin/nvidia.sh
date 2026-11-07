@@ -82,9 +82,9 @@ cachyos_nvidia_setup() {
   # are only supported by NVIDIA's open kernel modules. The closed 580xx driver
   # cannot drive them, so keep CachyOS's default (open) chwd profile instead.
   if [[ $gpu_name =~ (^|[^A-Za-z0-9])G[BH][0-9]{3}([^0-9]|$) ]]; then
-    _cachyos_nvidia_open_only_setup "$ids_file" "$gpu_id"
+    _cachyos_nvidia_open_only_setup "$ids_file" "$gpu_id" || return 1
   else
-    _cachyos_nvidia_580xx_setup "$ids_file" "$gpu_id"
+    _cachyos_nvidia_580xx_setup "$ids_file" "$gpu_id" || return 1
   fi
 
   _cachyos_nvidia_common_setup
