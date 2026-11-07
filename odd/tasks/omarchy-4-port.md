@@ -55,7 +55,8 @@ User explicitly chose 4.5.0 after being told about the risks (2026-11-06).
 - [x] T5 — nvidia.sh as a 4.x root step (chwd 580xx), user env moved to a user-context step; fish mise activation.
   - Part 1 done (root leaf `bin/nvidia.sh`): sourced by `run_logged` (v4.5.0 `install/helpers/logging.sh` run_logged: `bash -eE -c 'source "$1"'`, stdin `/dev/null`), so no sudo/prompts; logic in a function so it also runs standalone. Pins GPU ID in chwd 580 ID list, removes open-module packages and runs `chwd -a` only when 580xx is not active, then verifies 580xx and fails loudly otherwise (fixes old hole: after removing open modules, leftover `nvidia-utils` made the old script skip `chwd -a`). Only a separate `/etc/modprobe.d/omarchy-on-cachyos-nvidia.conf`; deviation: no mkinitcpio MODULES drop-in (initramfs rebuild path under limine-mkinitcpio-hook unverified; CachyOS keeps early-KMS). `bash -n` OK, `shellcheck` clean.
   - Part 2 done in installer: `~/.config/uwsm/env.d/90-omarchy-on-cachyos-nvidia` (location per v4.5.0 `default/uwsm/env.d/10-omarchy` comment), skipped on hybrid graphics via `omarchy-hw-nvidia-display` (v4.5.0 default/hypr/nvidia.lua rationale); fish `mise activate fish | source` guarded by `command -q mise`, idempotent marker.
-- [ ] T6 — README update for 4.x flow and risks.
+- [x] T6 — README update for 4.x flow and risks.
+  - Structural readback only (passive doc). Covers 4.x flow, Limine prerequisite, repo-order trade-off, NoExtract table with packaging evidence, accepted scriptlet overwrites, NVIDIA, risks, revert steps, fork clone URL.
 
 ## Route
 Delegated direct: one bounded writer (2+ non-trivial files; research of omarchy-pkgs file lists prepares the write).
@@ -71,6 +72,16 @@ Delegated direct: one bounded writer (2+ non-trivial files; research of omarchy-
 
 ## Progress
 - 2026-11-06: exploration done (map of 3.x→4.x changes). Branch created. No source writes yet.
+- 2026-11-07: T1 `a000f84` (fetch), T5 root leaf `579600a` (nvidia.sh), T2+T3+T4+T5 user half `5db799b` (installer; one file rewritten as a whole, so not split), T6 README in the docs commit that records this line.
+- Verification: `bash -n bin/*.sh` OK; `shellcheck bin/*.sh` (0.11 via brew) clean, one justified `SC2016` disable for the literal `$arch`.
+
+## Unproven assumptions (check on the real machine)
+- `chwd -a` with the patched `/var/lib/chwd/ids/nvidia-580.ids` selects/installs 580xx (logic inherited from the old script; chwd flags not verified here).
+- CachyOS Limine installs use `limine-mkinitcpio-hook`/`limine-snapper-sync` names (or provides) that satisfy omarchy's deps.
+- uwsm reads `~/.config/uwsm/env.d/*` (asserted by Omarchy's 10-omarchy comment, not by uwsm docs here).
+- SDDM reads `/etc/sddm.conf` after `/etc/sddm.conf.d/` (sddm.conf(5), not Omarchy source).
+- Omarchy's root steps (docker, firewall/ufw, PAM, enable-services) succeed on CachyOS; any failure aborts omarchy-apply-system.
+- Effect of Omarchy's `/etc/os-release` on CachyOS tools (chwd, kernel manager) unknown.
 
 ## Next step
-T1–T6 via bounded writer.
+User runs the installer on a CachyOS (Limine) test machine/VM with a snapshot; report failures from `/var/log/omarchy-install.log`. Push/PR remain user decisions.
