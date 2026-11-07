@@ -15,9 +15,11 @@
 #
 # Policy (replaces Omarchy's own nvidia.sh, which installs nvidia-open-dkms or
 # nvidia-580xx-dkms by itself):
-#   - the proprietary 580xx series is installed and kept through CachyOS's chwd;
-#   - this GPU's PCI ID is added to chwd's 580 ID list so chwd selects that
-#     profile for it;
+#   - Blackwell/Hopper GPUs (e.g. GeForce RTX 50 series) only work with the open
+#     kernel modules, so they keep CachyOS's default chwd profile (open driver);
+#   - every other GPU gets the proprietary 580xx series through CachyOS's chwd:
+#     its PCI ID is added to chwd's 580 ID list so chwd selects that profile,
+#     and removed packages are restored if chwd fails;
 #   - CachyOS's own kernel/initramfs configuration is never rewritten. Only a
 #     separate modprobe drop-in is added. No mkinitcpio drop-in is written: the
 #     early-KMS module list is left to CachyOS/chwd, so no initramfs rebuild is
@@ -60,8 +62,7 @@ _cachyos_nvidia_580xx_active() {
 
 cachyos_nvidia_setup() {
   local ids_file=/var/lib/chwd/ids/nvidia-580.ids
-  local gpu_id gpu_name pkg
-  local -a open_packages=()
+  local gpu_id gpu_name
 
   if ! lspci -nn -d 10de: | grep -Eq 'VGA|3D'; then
     _cachyos_nvidia_log "No NVIDIA GPU found. Skipping."
@@ -76,6 +77,51 @@ cachyos_nvidia_setup() {
     _cachyos_nvidia_err "chwd (CachyOS hardware detection) is not installed; cannot manage the NVIDIA driver."
     return 1
   fi
+
+  # Blackwell (GBxxx) and Hopper (GHxxx) GPUs, e.g. the GeForce RTX 50 series,
+  # are only supported by NVIDIA's open kernel modules. The closed 580xx driver
+  # cannot drive them, so keep CachyOS's default (open) chwd profile instead.
+  if [[ $gpu_name =~ (^|[^A-Za-z0-9])G[BH][0-9]{3}([^0-9]|$) ]]; then
+    _cachyos_nvidia_open_only_setup "$ids_file" "$gpu_id"
+  else
+    _cachyos_nvidia_580xx_setup "$ids_file" "$gpu_id"
+  fi
+
+  _cachyos_nvidia_common_setup
+}
+
+# Open-module-only GPUs: undo a 580xx pin from an earlier run and make sure a
+# kernel module is installed through chwd's default profile.
+_cachyos_nvidia_open_only_setup() {
+  local ids_file=$1 gpu_id=$2
+
+  _cachyos_nvidia_log "This GPU requires NVIDIA's open kernel modules; not pinning the proprietary 580xx driver."
+
+  if [[ -n $gpu_id && -f $ids_file ]] && grep -qiw "$gpu_id" "$ids_file"; then
+    _cachyos_nvidia_log "Removing GPU ID $gpu_id from $ids_file (added by an earlier run)."
+    sed -i "/^${gpu_id}\$/Id" "$ids_file"
+  fi
+
+  if pacman -Qq | grep -Eq '^(nvidia-open-dkms|linux-cachyos[a-z0-9-]*-nvidia-open)$'; then
+    _cachyos_nvidia_log "Open NVIDIA kernel module already installed ($(_cachyos_nvidia_driver_version))."
+    return 0
+  fi
+
+  _cachyos_nvidia_log "No NVIDIA kernel module installed. Running chwd auto-configuration..."
+  if ! chwd -a; then
+    _cachyos_nvidia_err "chwd -a failed. The NVIDIA driver is missing: fix it before rebooting (see 'chwd --help')."
+    return 1
+  fi
+  if ! pacman -Qq | grep -Eq '^(nvidia-open-dkms|linux-cachyos[a-z0-9-]*-nvidia-open)$'; then
+    _cachyos_nvidia_err "chwd finished but no open NVIDIA kernel module is installed. Fix it before rebooting."
+    return 1
+  fi
+  _cachyos_nvidia_log "Open NVIDIA driver installed via chwd ($(_cachyos_nvidia_driver_version))."
+}
+
+_cachyos_nvidia_580xx_setup() {
+  local ids_file=$1 gpu_id=$2 pkg
+  local -a open_packages=()
 
   # Pin: make chwd's 580 profile match this GPU.
   if [[ -z $gpu_id ]]; then
@@ -98,8 +144,11 @@ cachyos_nvidia_setup() {
   else
     _cachyos_nvidia_log "Proprietary 580xx driver not active (userspace: $(_cachyos_nvidia_driver_version || true))."
 
-    # Open kernel module packages conflict with the proprietary 580xx series.
-    for pkg in libxnvctrl linux-cachyos-nvidia-open linux-cachyos-lts-nvidia-open nvidia-open-dkms; do
+    # Open kernel module packages and the current-series userspace conflict with
+    # the proprietary 580xx series (chwd's pacman call runs non-interactively, so
+    # it cannot answer pacman's "Remove nvidia-utils?" conflict prompt itself).
+    for pkg in libxnvctrl linux-cachyos-nvidia-open linux-cachyos-lts-nvidia-open nvidia-open-dkms \
+      nvidia-utils lib32-nvidia-utils opencl-nvidia lib32-opencl-nvidia; do
       if pacman -Q "$pkg" >/dev/null 2>&1; then
         open_packages+=("$pkg")
       fi
@@ -111,7 +160,8 @@ cachyos_nvidia_setup() {
 
     _cachyos_nvidia_log "Running chwd auto-configuration..."
     if ! chwd -a; then
-      _cachyos_nvidia_err "chwd -a failed. The NVIDIA driver may now be missing: fix it before rebooting (see 'chwd --help')."
+      _cachyos_nvidia_err "chwd -a failed."
+      _cachyos_nvidia_restore_packages "${open_packages[@]}"
       return 1
     fi
 
@@ -122,7 +172,19 @@ cachyos_nvidia_setup() {
     fi
     _cachyos_nvidia_log "Proprietary 580xx driver installed via chwd ($(_cachyos_nvidia_driver_version))."
   fi
+}
 
+# Reinstall the packages removed before a failed chwd run, so the machine is
+# not left without an NVIDIA kernel module.
+_cachyos_nvidia_restore_packages() {
+  (( $# )) || return 0
+  _cachyos_nvidia_log "Restoring removed packages: $*"
+  if ! pacman -S --needed --noconfirm "$@"; then
+    _cachyos_nvidia_err "Could not restore: $*. The NVIDIA driver may be missing: fix it before rebooting."
+  fi
+}
+
+_cachyos_nvidia_common_setup() {
   # VA-API: libva-nvidia-driver provides NVDEC-backed VA-API (needed by the
   # browser hardware decoding notes in README.md); libva-utils provides vainfo.
   pacman -S --needed --noconfirm libva-utils libva-nvidia-driver
