@@ -1,57 +1,92 @@
 #!/bin/bash
+#
+# Fetch an Omarchy 4.x source tree into the directory the installer uses.
+#
+# Omarchy 4.x lives at github.com/omacom/omarchy. Only stable 4.x tags
+# (vMAJOR.MINOR.PATCH, no -rc/-beta suffix) are offered, newest first. The
+# installer (install-omarchy-on-cachyos.sh) validates that the resulting tree is
+# a 4.x layout before using it, so keeping an existing directory is allowed.
 
-# Target destination (relative to this script's location)
+set -euo pipefail
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-TARGET_DIR="$SCRIPT_DIR/../../omarchy"
-REPO_URL="https://github.com/basecamp/omarchy"
+TARGET_DIR="${OMARCHY_DIR:-$SCRIPT_DIR/../../omarchy}"
+REPO_URL="https://github.com/omacom/omarchy"
+MAX_RELEASES=10
 
-# Fetch available stable version tags from the remote repository cleanly
-echo "Fetching available stable releases from GitHub..."
-RELEASES=($(git ls-remote --tags --refs $REPO_URL 2>/dev/null | awk -F/ '{print $3}' | sort -rV | head -n 5))
+die() {
+  echo "Error: $*" >&2
+  exit 1
+}
+
+command -v git >/dev/null 2>&1 || die "git is not installed."
+
+echo "Fetching available stable Omarchy 4.x releases from $REPO_URL..."
+if ! remote_tags=$(git ls-remote --tags --refs "$REPO_URL" 2>/dev/null); then
+  die "Could not list tags from $REPO_URL. Check your network connection."
+fi
+
+# Keep only stable 4.x tags (v4.X.Y). Pre-releases such as v4.5.0-rc1 or
+# v4.0.0-beta3 are excluded on purpose.
+mapfile -t RELEASES < <(
+  printf '%s\n' "$remote_tags" |
+    awk -F/ '{print $3}' |
+    grep -E '^v4\.[0-9]+\.[0-9]+$' |
+    sort -rV |
+    head -n "$MAX_RELEASES"
+)
+
+if (( ${#RELEASES[@]} == 0 )); then
+  die "No stable Omarchy 4.x release tags were found at $REPO_URL."
+fi
+
+BLEEDING_CHOICE=$(( ${#RELEASES[@]} + 1 ))
 
 echo "-----------------------------------------------"
 echo "Select the Omarchy version you want to install:"
 echo "-----------------------------------------------"
-echo "1) Bleeding Edge (dev/main branch - Unstable)"
-
-# Dynamically list the stable versions fetched from the repository
 for i in "${!RELEASES[@]}"; do
-    echo "$((i+2))) Stable Release (${RELEASES[i]})"
+  label="Stable Release (${RELEASES[i]})"
+  (( i == 0 )) && label="$label [default, newest]"
+  echo "$((i + 1))) $label"
 done
+echo "$BLEEDING_CHOICE) Bleeding Edge (default branch - Unstable, untested with this installer)"
 
-read -r -p "Enter your choice (1-$(( ${#RELEASES[@]} + 1 ))): " CHOICE
+read -r -p "Enter your choice (1-$BLEEDING_CHOICE) [1]: " CHOICE
+CHOICE="${CHOICE:-1}"
 
-# Formulate arguments based on selection
-if [ "$CHOICE" -eq 1 ] || [ -z "$CHOICE" ]; then
-    BRANCH_ARGS=""
-    echo "Cloning bleeding-edge dev tree..."
+if ! [[ $CHOICE =~ ^[0-9]+$ ]] || (( CHOICE < 1 || CHOICE > BLEEDING_CHOICE )); then
+  die "Invalid choice '$CHOICE'. Expected a number between 1 and $BLEEDING_CHOICE."
+fi
+
+CLONE_ARGS=()
+if (( CHOICE == BLEEDING_CHOICE )); then
+  echo "Selected bleeding-edge default branch."
 else
-    SELECTED_TAG="${RELEASES[$((CHOICE-2))]}"
-    BRANCH_ARGS="--depth 1 -b $SELECTED_TAG"
-    echo "Cloning stable version: $SELECTED_TAG..."
+  SELECTED_TAG="${RELEASES[$((CHOICE - 1))]}"
+  CLONE_ARGS=(--depth 1 --branch "$SELECTED_TAG")
+  echo "Selected stable version: $SELECTED_TAG"
 fi
 
-# Ensure target directory is clean before git cloning to prevent fatal conflicts
-if [ -d "$TARGET_DIR" ]; then
-    echo ""
-    echo "⚠️  Warning: An existing installation directory was found at $TARGET_DIR"
-    read -r -p "Would you like to delete it and proceed with a clean install? [y/N]: " CONFIRM
-    
-    if [[ "${CONFIRM,,}" =~ ^(y|yes)$ ]]; then
-        echo "Cleaning up previous installation files at $TARGET_DIR..."
-        rm -rf "$TARGET_DIR"
-    else
-        echo "Proceeding with existing files in $TARGET_DIR..."
-        # If user chooses not to delete, we should skip the clone but continue the script
-        exit 0
-    fi
+# Ensure the target directory is clean before cloning to prevent fatal conflicts.
+if [[ -e $TARGET_DIR ]]; then
+  echo ""
+  echo "Warning: an existing Omarchy source directory was found at $TARGET_DIR"
+  read -r -p "Delete it and clone the selected version? [y/N]: " CONFIRM
+  if [[ ${CONFIRM,,} =~ ^(y|yes)$ ]]; then
+    echo "Removing $TARGET_DIR..."
+    rm -rf "$TARGET_DIR"
+  else
+    # Keep the existing tree. The installer validates that it is a 4.x layout
+    # and aborts with a clear message otherwise.
+    echo "Keeping the existing files in $TARGET_DIR (the selection above is ignored)."
+    exit 0
+  fi
 fi
 
-# Execute clean, quiet checkout bypassing standard detached HEAD advice warnings
 echo "Cloning into $TARGET_DIR..."
-if ! git -c advice.detachedHead=false clone --quiet $BRANCH_ARGS $REPO_URL "$TARGET_DIR"; then
-    echo "Error: Failed to clone Omarchy repo."
-    exit 1
+if ! git -c advice.detachedHead=false clone --quiet "${CLONE_ARGS[@]}" "$REPO_URL" "$TARGET_DIR"; then
+  die "Failed to clone $REPO_URL."
 fi
 
-echo "Successfully cloned Omarchy repository layout."
+echo "Successfully cloned the Omarchy source tree."
