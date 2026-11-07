@@ -446,6 +446,24 @@ move_cachyos_sddm_conf() {
   fi
 }
 
+# Omarchy's SDDM theme has no user field: it logs in userModel.lastUser
+# (default/sddm/omarchy/Main.qml). The Omarchy ISO seeds that user; without it
+# the greeter submits an empty user name and every password is rejected.
+# Mirrors omarchy-upgrade-to-quattro's "Normalizing SDDM login configuration".
+configure_sddm_login() {
+  log "Configuring SDDM to remember $USER for the Omarchy greeter"
+  sudo install -d -m 0755 /etc/sddm.conf.d
+  printf '[Users]\nRememberLastUser=true\nRememberLastSession=true\n' |
+    sudo tee /etc/sddm.conf.d/99-omarchy-login.conf >/dev/null
+
+  sudo install -d -m 0755 /var/lib/sddm
+  printf '[Last]\nSession=omarchy.desktop\nUser=%s\n' "$USER" |
+    sudo tee /var/lib/sddm/state.conf >/dev/null
+  if getent passwd sddm >/dev/null; then
+    sudo chown sddm:sddm /var/lib/sddm /var/lib/sddm/state.conf
+  fi
+}
+
 # ---------------------------------------------------------------------------
 # Omarchy setup
 # ---------------------------------------------------------------------------
@@ -611,6 +629,7 @@ install_base_packages
 move_cachyos_sddm_conf
 patch_omarchy_tree
 run_apply_system
+configure_sddm_login
 seed_user_home
 run_provision_user
 configure_user_nvidia_env
