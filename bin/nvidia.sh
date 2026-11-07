@@ -107,9 +107,12 @@ _cachyos_nvidia_open_only_setup() {
     return 0
   fi
 
-  _cachyos_nvidia_log "No NVIDIA kernel module installed. Running chwd auto-configuration..."
-  if ! chwd -a; then
-    _cachyos_nvidia_err "chwd -a failed. The NVIDIA driver is missing: fix it before rebooting (see 'chwd --help')."
+  # Force-reinstall chwd's open profile: when its packages were removed behind
+  # chwd's back (e.g. by an earlier 580xx run), `chwd -a` skips the profile as
+  # "already installed" and leaves the machine without a kernel module.
+  _cachyos_nvidia_log "No NVIDIA kernel module installed. Reinstalling chwd profile nvidia-open-dkms..."
+  if ! chwd -f -i nvidia-open-dkms; then
+    _cachyos_nvidia_err "chwd could not install nvidia-open-dkms. The NVIDIA driver is missing: fix it before rebooting (see 'chwd --help')."
     return 1
   fi
   if ! pacman -Qq | grep -Eq '^(nvidia-open-dkms|linux-cachyos[a-z0-9-]*-nvidia-open)$'; then
