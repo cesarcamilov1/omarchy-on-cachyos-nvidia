@@ -197,6 +197,10 @@ check_display_manager() {
 
   # omarchy-apply-system enables sddm.service (install/config/enable-services.sh),
   # which fails when another display manager owns display-manager.service.
+  # No symlink means no display manager is enabled (e.g. a "No Desktop" CachyOS
+  # install). GNU readlink -f still prints a path for a missing file, so check
+  # for the symlink first to avoid treating "display-manager.service" itself as a DM.
+  [[ -L /etc/systemd/system/display-manager.service ]] || return 0
   current="$(readlink -f /etc/systemd/system/display-manager.service 2>/dev/null || true)"
   current="${current##*/}"
   if [[ -n $current && $current != "sddm.service" ]]; then
