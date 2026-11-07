@@ -6,13 +6,24 @@ if ! command -v git &> /dev/null; then
     exit 1
 fi
 
-# Clone omarchyy from repo
-echo "Clone Omarchy from repo..."
-if ! git clone https://www.github.com/basecamp/omarchy ../omarchy; then
-    echo "Error: Failed to clone Omarchy repo."
+# Fetch Omarchy from repo
+echo "Fetching Omarchy source..."
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+OMARCHY_DIR="$SCRIPT_DIR/../../omarchy"
+
+if [ -f "./fetch-omarchy.sh" ]; then
+    chmod +x ./fetch-omarchy.sh
+    ./fetch-omarchy.sh
+else
+    # Fallback if script is missing
+    echo "fetch-omarchy.sh not found, falling back to default clone..."
+    git clone https://www.github.com/basecamp/omarchy "$OMARCHY_DIR"
 fi
 
-echo "Successfully extracted omarchy archive."
+if [ ! -d "$OMARCHY_DIR" ]; then
+    echo "Error: Failed to fetch Omarchy source at $OMARCHY_DIR"
+    exit 1
+fi
 
 # Check if yay is installed
 if ! command -v yay &> /dev/null; then
@@ -90,7 +101,7 @@ sed -i '/linux-cachyos/ ! s/pacman -Q linux/pacman -Q linux-cachyos/' bin/omarch
 # Remove pacman.sh from preflight/all.sh to prevent conflict with cachyos packages
 sed -i '/run_logged \$OMARCHY_INSTALL\/preflight\/pacman\.sh/d' install/preflight/all.sh
 
-# Replace nvidia.sh with CachyOS Nvidia configuration logic that detects and uses the existing driver instead of forcing installation.
+# Replace nvidia.sh with custom CachyOS 580xx Driver Logic
 cp ../bin/nvidia.sh install/config/hardware/nvidia.sh
 chmod +x install/config/hardware/nvidia.sh
 
@@ -154,7 +165,7 @@ echo "The following adjustments have been completed."
 echo " 1. Added Omarchy repo to pacman.conf"
 echo " 2. Removed tldr from packages.sh to avoid conflict with tealdeer on CachyOS."
 echo " 3. Disabled further Omarchy changes to pacman.conf, preserving CachyOS settings."
-echo " 4. Replaced nvidia.sh with custom CachyOS Nvidia configuration logic."
+echo " 4. Replaced nvidia.sh to respect existing CachyOS NVIDIA drivers and map the GPU to the nvidia-580 chwd profile."
 echo " 5. Removed plymouth.sh from install.sh to avoid conflict with CachyOS login display manager installation."
 echo " 6. Removed limine-snapper.sh from install.sh to avoid conflict with CachyOS boot loader installation."
 echo " 7. Removed alt-bootloaders.sh from install.sh to avoid conflict with CachyOS boot loader installation."
