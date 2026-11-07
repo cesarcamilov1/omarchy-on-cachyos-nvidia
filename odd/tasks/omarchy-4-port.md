@@ -41,6 +41,8 @@ User explicitly chose 4.5.0 after being told about the risks (2026-11-06).
 - [ ] T3 — package install: `omarchy-keyring omarchy-settings omarchy` + filtered base package list (no tldr, linux-omarchy, limine*, nvidia rows, iwd).
 - [ ] T4 — step patches on the cloned tree + run `omarchy-apply-system` / `omarchy-provision-user` with `OMARCHY_PATH` pointing to it; drop obsolete 3.x patches.
 - [ ] T5 — nvidia.sh as a 4.x root step (chwd 580xx), user env moved to a user-context step; fish mise activation.
+  - Part 1 done (root leaf `bin/nvidia.sh`): sourced by `run_logged` (v4.5.0 `install/helpers/logging.sh` run_logged: `bash -eE -c 'source "$1"'`, stdin `/dev/null`), so no sudo/prompts; logic in a function so it also runs standalone. Pins GPU ID in chwd 580 ID list, removes open-module packages and runs `chwd -a` only when 580xx is not active, then verifies 580xx and fails loudly otherwise (fixes old hole: after removing open modules, leftover `nvidia-utils` made the old script skip `chwd -a`). Only a separate `/etc/modprobe.d/omarchy-on-cachyos-nvidia.conf`; deviation: no mkinitcpio MODULES drop-in (initramfs rebuild path under limine-mkinitcpio-hook unverified; CachyOS keeps early-KMS). `bash -n` OK, `shellcheck` clean.
+  - Part 2 (user uwsm env + fish mise) lives in the installer, see T4.
 - [ ] T6 — README update for 4.x flow and risks.
 
 ## Route
